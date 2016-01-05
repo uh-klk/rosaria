@@ -6,7 +6,11 @@
 
 #include "ros/ros.h"
 #include "std_msgs/ByteMultiArray.h" //for sending and receiving 40 chars of midi#include "std_msgs/ByteMultiArray.h" //for sending and receiving 40 chars of midi
+#include "std_msgs/UInt8.h"
 #include "RosAria.hpp"
+
+#include "sf_dance/DanceSequence.h"
+#include "sf_dance/DanceStep.h"
 
 class AriaMidi //midi driver for SF
 {
@@ -25,6 +29,7 @@ protected:
     ros::NodeHandle nh_;
     ros::Subscriber subscriber_;
     ArRobot *robot_;
+
 };
 
 void AriaMidi::init()
@@ -59,6 +64,134 @@ void AriaMidi::playTones(char * tones, int size)
     robot_->unlock();
 }
 
+class AriaDance
+{
+public:
+    AriaDance(ArRobot *robot, ros::NodeHandle nh) : robot_(robot), nh_(nh)
+    {
+
+    }
+
+    ~AriaDance() {}
+
+    void init()
+    {
+        subscriber_ = nh_.subscribe("aria_dance_sequence", 10, &AriaDance::receiveCB, this);
+    }
+
+    void receiveCB(const sf_dance::DanceSequence::ConstPtr& msg)
+    {
+        if (nextDanceSequence_ == true)
+        {
+            std::vector<sf_dance::DanceStep> danceStep;
+
+            ROS_INFO("I hear rotAccel : %f",  msg->rotAccel);
+
+            danceSequence_.rotAccel = msg->rotAccel;
+            danceSequence_.rotDecel =  msg->rotDecel;
+            danceSequence_.transAccel = msg->transAccel;
+            danceSequence_.transDecel = msg->transDecel;
+
+            danceSequence_.danceStep.clear();
+            for(std::vector<sf_dance::DanceStep>::const_iterator it = msg->danceStep.begin(); it != msg->danceStep.end(); ++it)
+            {
+               danceSequence_.danceStep.push_back(*it);
+            }
+
+            prepareDance();
+
+        }
+    }
+
+    void prepareDance()
+    {
+        nextDanceSequence_ = false;
+        nextDanceStep_ = true;
+        DelayTime_ = 0;
+        StartTimer_ = 0;
+
+        it_ = danceSequence_.danceStep.begin();
+
+    }
+
+    void performDance()
+    {
+        static unsigned char mode = 2;
+
+        if (nextDanceStep_ == true) //perform the dance step
+        {
+            if (it_ != danceSequence_.danceStep.end()) //still got dance step left
+            {
+                mode = it_->mode;
+                switch (mode)
+                {
+                    case sf_dance::DanceSequence::ROTATION :
+                        DelayTime_ = 800;
+                        robot_->lock();
+                        robot_->setDeltaHeading(it_->value);
+                        robot_->unlock();
+                        StartTimer_ = ArUtil::getTime();
+                        ROS_INFO("Perform dance");
+                    break;
+
+                    case sf_dance::DanceSequence::TRANSLATION :
+                        DelayTime_ = 800;
+                        robot_->lock();
+                        robot_->move(it_->value);
+                        robot_->unlock();
+                        StartTimer_ = ArUtil::getTime();
+                        ROS_INFO("Perform dance");
+                    break;
+
+                }
+                nextDanceStep_ = 0;
+                ++it_; //next dance step
+            }
+            else
+            {
+                nextDanceSequence_ = true; //ready to receive next dance sequence
+
+            }
+        }
+
+        if ( (ArUtil::getTime() - StartTimer_) >= DelayTime_ )
+        {
+            switch (mode)
+            {
+                case sf_dance::DanceSequence::ROTATION :
+                    robot_->lock();
+                    if (robot_->isHeadingDone(1))
+                        nextDanceStep_ = true;
+                    robot_->unlock();
+                break;
+
+                case sf_dance::DanceSequence::TRANSLATION :
+                    robot_->lock();
+                    if (robot_->isHeadingDone(1))
+                        nextDanceStep_ = true;
+                    robot_->unlock();
+                break;
+
+            }
+
+
+        }
+    }
+
+protected:
+    ros::NodeHandle nh_;
+    ros::Subscriber subscriber_;
+    ArRobot *robot_;
+    sf_dance::DanceSequence danceSequence_;
+    unsigned int DelayTime_;
+    unsigned int StartTimer_;
+    std::vector<sf_dance::DanceStep>::const_iterator it_;
+    bool nextDanceSequence_;
+    bool nextDanceStep_;
+
+
+};
+
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "RosAria");
@@ -80,10 +213,14 @@ int main(int argc, char** argv)
     AriaMidi *ariaMidi = new AriaMidi( robot_, nh);
     ariaMidi->init(); //init tune node
 
+    AriaDance *ariaDance = new AriaDance( robot_, nh);
+    ariaDance->init();
+
     ros::Rate loop_rate(1000);
 
     while (ros::ok())
     {
+        ariaDance->performDance();
         ros::spinOnce();
         loop_rate.sleep();
     }
