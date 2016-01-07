@@ -81,18 +81,19 @@ public:
 
     void receiveCB(const sf_dance::DanceSequence::ConstPtr& msg)
     {
-        if (nextDanceSequence_ == true)
+        if (DoneDanceSequence_ == true) //ready for receiving next dance sequence
         {
             std::vector<sf_dance::DanceStep> danceStep;
 
             ROS_INFO("I hear rotAccel : %f",  msg->rotAccel);
-
+            //may not need these variables
             danceSequence_.rotAccel = msg->rotAccel;
             danceSequence_.rotDecel =  msg->rotDecel;
             danceSequence_.transAccel = msg->transAccel;
             danceSequence_.transDecel = msg->transDecel;
 
-            danceSequence_.danceStep.clear();
+            danceSequence_.danceStep.clear();   //clear the containers
+
             for(std::vector<sf_dance::DanceStep>::const_iterator it = msg->danceStep.begin(); it != msg->danceStep.end(); ++it)
             {
                danceSequence_.danceStep.push_back(*it);
@@ -101,80 +102,93 @@ public:
             prepareDance();
 
         }
+
     }
 
     void prepareDance()
     {
-        nextDanceSequence_ = false;
-        nextDanceStep_ = true;
-        DelayTime_ = 0;
-        StartTimer_ = 0;
+        DoneDanceSequence_ = false; // dance sequence to be performed
+        NewDanceStep_ = true;   // new dance step to be performed
 
         it_ = danceSequence_.danceStep.begin();
 
+        //can be used to setup the max speed etc.
+        /*robot_->lock();
+
+        if ( (danceSequence_.rotAccel != sf_dance::DanceSequence::DEFAULT)
+             || (danceSequence_.rotDecel != sf_dance::DanceSequence::DEFAULT) )
+        {
+            robot_->setRotAccel(danceSequence_.rotAccel);
+            robot_->setRotDecel(danceSequence_.rotDecel);
+        }
+
+
+        if ( (danceSequence_.transAccel != sf_dance::DanceSequence::DEFAULT)
+             || (danceSequence_.transDecel != sf_dance::DanceSequence::DEFAULT) )
+        {
+            robot_->setTransAccel(danceSequence_.transAccel);
+            robot_->setTransDecel(danceSequence_.transDecel);
+        }
+
+        robot_->unlock();
+        */
+
     }
 
-    void performDance()
+    void performDanceStep()
     {
-        static unsigned char mode = 2;
+        static unsigned char danceMode = 2; //0: rotation, 1: translation
 
-        if (nextDanceStep_ == true) //perform the dance step
+        if (NewDanceStep_ == true) //ready to perform new dance step
         {
-            if (it_ != danceSequence_.danceStep.end()) //still got dance step left
+            if (it_ != danceSequence_.danceStep.end()) //still got dance step to be performed
             {
-                mode = it_->mode;
-                switch (mode)
+                danceMode = it_->mode;
+                switch (danceMode)
                 {
                     case sf_dance::DanceSequence::ROTATION :
-                        DelayTime_ = 800;
                         robot_->lock();
                         robot_->setDeltaHeading(it_->value);
                         robot_->unlock();
-                        StartTimer_ = ArUtil::getTime();
-                        ROS_INFO("Perform dance");
+                        ROS_INFO("Perform rot step");
                     break;
 
                     case sf_dance::DanceSequence::TRANSLATION :
-                        DelayTime_ = 800;
                         robot_->lock();
                         robot_->move(it_->value);
                         robot_->unlock();
-                        StartTimer_ = ArUtil::getTime();
-                        ROS_INFO("Perform dance");
+                        ROS_INFO("Perform trans step");
                     break;
-
                 }
-                nextDanceStep_ = 0;
-                ++it_; //next dance step
+                NewDanceStep_ = false; //wait for the dance step to complete
+                ++it_; //get next dance step
             }
-            else
+            else    //no more dance step left, reset variables and wait for new danceSequence
             {
-                nextDanceSequence_ = true; //ready to receive next dance sequence
-
+                DoneDanceSequence_ = true; //ready to receive next dance sequence
+                NewDanceStep_ = false;  //no more new dance step
             }
         }
 
-        if ( (ArUtil::getTime() - StartTimer_) >= DelayTime_ )
+        if (DoneDanceSequence_== false) // if dance sequence not yet completed
         {
-            switch (mode)
+            switch (danceMode)
             {
                 case sf_dance::DanceSequence::ROTATION :
                     robot_->lock();
                     if (robot_->isHeadingDone(1))
-                        nextDanceStep_ = true;
+                        NewDanceStep_ = true; //ready for next dance step
                     robot_->unlock();
                 break;
 
                 case sf_dance::DanceSequence::TRANSLATION :
                     robot_->lock();
-                    if (robot_->isHeadingDone(1))
-                        nextDanceStep_ = true;
+                    if (robot_->isMoveDone(1))
+                        NewDanceStep_ = true; //ready for next dance step
                     robot_->unlock();
                 break;
 
             }
-
-
         }
     }
 
@@ -183,11 +197,9 @@ protected:
     ros::Subscriber subscriber_;
     ArRobot *robot_;
     sf_dance::DanceSequence danceSequence_;
-    unsigned int DelayTime_;
-    unsigned int StartTimer_;
     std::vector<sf_dance::DanceStep>::const_iterator it_;
-    bool nextDanceSequence_;
-    bool nextDanceStep_;
+    bool DoneDanceSequence_;
+    bool NewDanceStep_;
 
 
 };
@@ -220,7 +232,7 @@ int main(int argc, char** argv)
 
     while (ros::ok())
     {
-        ariaDance->performDance();
+        ariaDance->performDanceStep();
         ros::spinOnce();
         loop_rate.sleep();
     }
