@@ -207,10 +207,10 @@ protected:
 int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "RosAria");
-    ros::NodeHandle nh(std::string("~"));
+  ros::NodeHandle nh(std::string("~"));
 	Aria::init();
 	
-    RosAriaNode *node = new RosAriaNode(nh);
+  RosAriaNode *node = new RosAriaNode(nh);
 
 	ArRobot *robot_;
 	robot_ = new ArRobot;
@@ -222,23 +222,23 @@ int main(int argc, char** argv)
 	}
 
 
-    AriaMidi *ariaMidi = new AriaMidi( robot_, nh);
-    ariaMidi->init(); //init tune node
+  AriaMidi *ariaMidi = new AriaMidi( robot_, nh);
+  ariaMidi->init(); //init tune node
 
-    AriaDance *ariaDance = new AriaDance( robot_, nh);
-    ariaDance->init();
+  AriaDance *ariaDance = new AriaDance( robot_, nh);
+  ariaDance->init();
 
-    ros::Rate loop_rate(1000);
+  ros::Rate loop_rate(1000);
 
-    while (ros::ok())
-    {
-        ariaDance->performDanceStep();
-        ros::spinOnce();
-        loop_rate.sleep();
-    }
+  while (ros::ok())
+  {
+    ariaDance->performDanceStep();
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
 
-    delete node;
+  delete node;
 
-    ROS_INFO( "sf_AriaDriver: Quitting... \n" );
-    return 0;
+  ROS_INFO( "sf_AriaDriver: Quitting... \n" );
+  return 0;
 }

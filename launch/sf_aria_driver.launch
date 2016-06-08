@@ -1,0 +1,30 @@
+<!-- -*- mode: XML -*- -->
+<launch>
+    <!-- Declear and initialise variables -->
+    <arg name="robot" default="$(optenv ROBOT !!NO_ROBOT_SET!!)" />
+    <arg name="robot_env" default="$(optenv ROBOT_ENV !!NO_ROBOT_ENV_SET!!!)" />
+    <arg name="scanner" default="base_laser_front_link" />
+    
+    <!-- Launch Map Server -->
+    <include file="$(find uh_environments)/launch/$(arg robot_env)_map.launch" />
+
+    <!-- Launch Robot State Publisher -->
+    <include file="$(find sf_description)/launch/$(arg robot).launch" />
+  
+    <!-- Start Hokuyo scanner -->
+	<node name="hokuyo" pkg="hokuyo_node" type="hokuyo_node" respawn="false" output="screen">
+		<param name="calibrate_time" type="bool" value="false" />
+		<param name="frame_id" value="$(arg scanner)" />
+		<param name="min_ang" value="-1.570796327" />
+		<param name="max_ang" value="1.570796327" />
+		<remap from="scan" to="scan_front" />
+	</node>
+
+    <!-- Start Pioneer base -->
+    <node pkg="rosaria" type="sf_aria_driver" name="sf_aria_driver" output="screen">
+       <param name="port" value="/dev/ttyUSB0" type="string"/>
+    </node>
+
+
+
+</launch>
