@@ -22,7 +22,7 @@
 
     <!-- Start Pioneer base -->
     <node pkg="rosaria" type="sf_aria_driver" name="sf_aria_driver" output="screen">
-       <param name="port" value="/dev/ttyUSB0" type="string"/>
+       <param name="port" value="/dev/p3dxBase" type="string"/>
     </node>
 
 
